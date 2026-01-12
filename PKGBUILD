@@ -14,7 +14,7 @@ sha256sums=('SKIP')
 build() {
     cd "$srcdir/$pkgname"
     bun install
-    bun tauri build
+    bun tauri build --bundles deb
 }
 
 package() {
