@@ -6,15 +6,15 @@ pkgdesc="A TSD rally racing software."
 arch=('x86_64')
 url="https://github.com/martinetbn/kiroshi"
 license=('MIT')
-depends=('webkit2gtk-4.1' 'gtk3' 'cairo' 'glib2' 'libsoup3' 'sqlite')
-makedepends=('rust' 'cargo' 'nodejs' 'bun' 'pkgconf' 'git')
+depends=('webkit2gtk-4.1' 'gtk3' 'cairo' 'glib2' 'sqlite')
+makedepends=('rust' 'cargo' 'nodejs' 'bun' 'pkgconf' 'git' 'base-devel' 'clang')
 source=("git+https://github.com/martinetbn/kiroshi.git")
 sha256sums=('SKIP')
 
 build() {
     cd "$srcdir/$pkgname"
     bun install
-    bun tauri build --bundles none
+    bun tauri build
 }
 
 package() {
