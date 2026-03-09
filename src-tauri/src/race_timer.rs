@@ -254,6 +254,17 @@ impl RaceTimer {
         *timer = TimerInternal::default();
     }
 
+    /// Reset distance-related values for chaining to the next PC.
+    /// Keeps the timer running, race clock, and correction factor intact.
+    pub fn reset_for_chain(&self) {
+        let mut timer = self.internal.lock().unwrap();
+        timer.accumulated_meters = 0.0;
+        timer.diff_snapshot = 0.0;
+        timer.odometer_meters = 0.0;
+        // Keep: is_running, last_update, current_speed, correction_factor,
+        //       race_clock_start_centiseconds, race_clock_accumulated_centiseconds
+    }
+
     pub fn set_race_clock_start(&self, centiseconds: i64) {
         let mut timer = self.internal.lock().unwrap();
         timer.race_clock_start_centiseconds = centiseconds;
@@ -338,5 +349,11 @@ pub fn get_race_timer_state(timer: State<RaceTimer>) -> RaceTimerState {
 #[tauri::command]
 pub fn set_race_clock_start(timer: State<RaceTimer>, centiseconds: i64) -> RaceTimerState {
     timer.set_race_clock_start(centiseconds);
+    timer.get_state()
+}
+
+#[tauri::command]
+pub fn reset_for_chain(timer: State<RaceTimer>) -> RaceTimerState {
+    timer.reset_for_chain();
     timer.get_state()
 }

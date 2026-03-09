@@ -16,6 +16,7 @@ import {
   setRaceClockStart,
   getNextPc,
   getReferencesByPc,
+  resetForChain,
 } from "../api/tauri";
 import type { ReferenceEntry, RaceTimerState } from "../types";
 
@@ -35,11 +36,12 @@ const ODOMETER_DISTANCE_KEY = "odometer_distance";
 interface RallyDashboardProps {
   raceId: number;
   pcId: number;
+  chain?: boolean;
 }
 
 type OdometerDistance = "100m" | "50m" | "25m";
 
-export function RallyDashboard({ raceId, pcId }: RallyDashboardProps) {
+export function RallyDashboard({ raceId, pcId, chain }: RallyDashboardProps) {
   const [scale, setScale] = useState(1);
   const navigate = useNavigate();
   const [odometerDistance, setOdometerDistance] = useState<OdometerDistance>("100m");
@@ -76,6 +78,19 @@ export function RallyDashboard({ raceId, pcId }: RallyDashboardProps) {
 
   // Raw meters captured at the moment of last odometer tick (for accurate factor calculation)
   const [rawMetersAtOdometerTick, setRawMetersAtOdometerTick] = useState<number>(0);
+
+  // Track whether S key is held down (for S+P chaining)
+  const sKeyHeld = useRef(false);
+
+  // Whether there's a next PC available (for S+P chaining)
+  const [hasNextPc, setHasNextPc] = useState(false);
+  const nextPcIdRef = useRef<number | null>(null);
+
+  // Chain mode: waiting for auto-start (race clock to reach this PC's LAR time)
+  const [waitingForAutoStart, setWaitingForAutoStart] = useState(!!chain);
+
+  // This PC's LAR time in centiseconds (for auto-start in chain mode)
+  const [thisLarCentiseconds, setThisLarCentiseconds] = useState<number | null>(null);
 
   // Refs to access current values in event handlers (avoid stale closures)
   const timerStateRef = useRef(timerState);
@@ -114,17 +129,27 @@ export function RallyDashboard({ raceId, pcId }: RallyDashboardProps) {
       }
     });
 
-    // Reset timer state when entering race mode, then mark as initialized
-    setIsInitialized(false);
-    fullResetRaceTimer().then(() => {
-      setIsInitialized(true);
-    });
+    if (chain) {
+      // Chain mode: reset distance-related values but keep timer running and race clock
+      setIsInitialized(false);
+      resetForChain().then(() => {
+        setIsInitialized(true);
+      });
+    } else {
+      // Normal mode: full reset
+      setIsInitialized(false);
+      fullResetRaceTimer().then(() => {
+        setIsInitialized(true);
+      });
+    }
   }, []);
 
-  // Fetch next PC's LAR time on mount
+  // Fetch next PC's LAR time and track next PC availability
   useEffect(() => {
     getNextPc(pcId).then((nextPc) => {
       if (nextPc) {
+        setHasNextPc(true);
+        nextPcIdRef.current = nextPc.id;
         getReferencesByPc(nextPc.id).then((refs) => {
           const larRef = refs.find((ref) => ref.event_type === "LAR");
           if (larRef) {
@@ -136,6 +161,9 @@ export function RallyDashboard({ raceId, pcId }: RallyDashboardProps) {
             setNextPcLarCentiseconds(centiseconds);
           }
         });
+      } else {
+        setHasNextPc(false);
+        nextPcIdRef.current = null;
       }
     });
   }, [pcId]);
@@ -150,6 +178,50 @@ export function RallyDashboard({ raceId, pcId }: RallyDashboardProps) {
       unlisten.then((fn) => fn());
     };
   }, []);
+
+  // In chain mode, compute this PC's LAR time for auto-start
+  useEffect(() => {
+    if (chain && references) {
+      const larRef = references.find((ref) => ref.event_type === "LAR");
+      if (larRef) {
+        const centiseconds =
+          larRef.hours * 360000 +
+          larRef.minutes * 6000 +
+          larRef.seconds * 100 +
+          larRef.centiseconds;
+        setThisLarCentiseconds(centiseconds);
+      }
+    }
+  }, [chain, references]);
+
+  // Auto-start in chain mode: when race clock reaches this PC's LAR time
+  useEffect(() => {
+    if (!waitingForAutoStart || thisLarCentiseconds === null || !references) return;
+
+    const correctedClock = timerState.race_clock_centiseconds + clockCorrectionCs;
+    if (correctedClock >= thisLarCentiseconds) {
+      // Auto-start: record the LAR and advance (timer is already running)
+      const larRef = references.find((ref) => ref.event_type === "LAR");
+      if (larRef) {
+        const snapshot: RecordedSnapshot = {
+          referenceIndex: 0,
+          recordedCentiseconds: thisLarCentiseconds,
+          expectedCentiseconds: thisLarCentiseconds,
+          diffCentiseconds: 0,
+          diffMeters: 0,
+          recommendedFactor: null,
+          rawMeters: 0,
+          odometerMeters: 0,
+        };
+        setRecordedSnapshots([snapshot]);
+        setCurrentIndex((prev) => {
+          const maxIndex = (references.length ?? 1) - 1;
+          return prev < maxIndex ? prev + 1 : prev;
+        });
+        setWaitingForAutoStart(false);
+      }
+    }
+  }, [waitingForAutoStart, thisLarCentiseconds, timerState.race_clock_centiseconds, clockCorrectionCs, references]);
 
   // Build list of speed changes (only when speed differs from previous)
   const speedChanges = references?.reduce<{ speed: number; startIndex: number }[]>(
@@ -192,11 +264,12 @@ export function RallyDashboard({ raceId, pcId }: RallyDashboardProps) {
     : 0;
 
   // Update Rust with current speed when it changes or after initialization
+  // While waiting for auto-start, keep speed at 0 so odometer doesn't accumulate
   useEffect(() => {
     if (isInitialized) {
-      setRaceSpeed(currentSpeedNum);
+      setRaceSpeed(waitingForAutoStart ? 0 : currentSpeedNum);
     }
-  }, [currentSpeedNum, isInitialized]);
+  }, [currentSpeedNum, isInitialized, waitingForAutoStart]);
 
   useEffect(() => {
     const updateScale = () => {
@@ -205,13 +278,39 @@ export function RallyDashboard({ raceId, pcId }: RallyDashboardProps) {
       setScale(Math.min(scaleX, scaleY));
     };
 
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.key === "s" || e.key === "S") {
+        sKeyHeld.current = false;
+      }
+    };
+
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "s" || e.key === "S") {
+        sKeyHeld.current = true;
+        return;
+      }
+
+      // S+P: chain to next PC
+      if ((e.key === "p" || e.key === "P") && sKeyHeld.current) {
+        if (hasNextPc && nextPcIdRef.current !== null && timerState.is_running) {
+          navigate({
+            to: "/carrera/$raceId/$pcId",
+            params: { raceId: String(raceId), pcId: String(nextPcIdRef.current) },
+            search: { chain: true },
+          });
+        }
+        return;
+      }
+
       if (e.key === "Escape") {
         if (showDistanceModal) {
           setShowDistanceModal(false);
         } else {
           navigate({ to: "/carrera/$raceId", params: { raceId: String(raceId) } });
         }
+      } else if (waitingForAutoStart) {
+        // While waiting for auto-start, ignore all keys except Escape and S+P
+        return;
       } else if (e.key === "a" || e.key === "A") {
         const increment = odometerDistance === "100m" ? 100 : odometerDistance === "50m" ? 50 : 25;
         adjustOdometer(increment);
@@ -296,11 +395,13 @@ export function RallyDashboard({ raceId, pcId }: RallyDashboardProps) {
     updateScale();
     window.addEventListener("resize", updateScale);
     window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
     return () => {
       window.removeEventListener("resize", updateScale);
       window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
     };
-  }, [navigate, raceId, references, showDistanceModal, odometerDistance, timerState.is_running, recordedSnapshots]);
+  }, [navigate, raceId, references, showDistanceModal, odometerDistance, timerState.is_running, recordedSnapshots, hasNextPc, waitingForAutoStart]);
 
   // Helper to format time
   const formatTime = (ref: ReferenceEntry) => {
@@ -397,11 +498,13 @@ export function RallyDashboard({ raceId, pcId }: RallyDashboardProps) {
     return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
   };
 
-  // Format countdown to next PC (centiseconds to MM:SS)
+  // Format countdown (centiseconds to MM:SS)
   const formatCountdown = (): string => {
-    if (nextPcLarCentiseconds === null) return "--:--";
+    // When waiting for auto-start, show countdown to this PC's LAR
+    const targetCs = waitingForAutoStart ? thisLarCentiseconds : nextPcLarCentiseconds;
+    if (targetCs === null) return "--:--";
     const correctedClock = race_clock_centiseconds + clockCorrectionCs;
-    const remainingCentiseconds = nextPcLarCentiseconds - correctedClock;
+    const remainingCentiseconds = targetCs - correctedClock;
     if (remainingCentiseconds <= 0) return "00:00";
     const totalSeconds = Math.floor(remainingCentiseconds / 100);
     const minutes = Math.floor(totalSeconds / 60);
@@ -530,7 +633,7 @@ export function RallyDashboard({ raceId, pcId }: RallyDashboardProps) {
 
         {/* Proxima PC */}
         <div className="absolute left-[720px] top-[847px] w-[284px] h-[109px] flex flex-col gap-1 items-center justify-center text-black text-center overflow-hidden">
-          <p className="text-[24px] font-medium">Proxima PC</p>
+          <p className="text-[24px] font-medium">{waitingForAutoStart ? "Inicio PC" : "Proxima PC"}</p>
           <p className="text-[36px] font-semibold">{formatCountdown()}</p>
         </div>
 

@@ -58,6 +58,7 @@ pub fn run() {
             full_reset_race_timer,
             get_race_timer_state,
             set_race_clock_start,
+            reset_for_chain,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
