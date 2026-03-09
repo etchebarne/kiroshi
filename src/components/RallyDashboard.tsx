@@ -162,11 +162,16 @@ export function RallyDashboard({ raceId, pcId }: RallyDashboardProps) {
     []
   ) ?? [];
 
-  // Find which speed change segment the current index belongs to
+  // The active reference is the last one we've taken (currentIndex - 1),
+  // since currentIndex points to the next reference to be recorded.
+  // Before any reference is taken, use index 0.
+  const activeIndex = recordedSnapshots.length > 0 ? Math.max(0, currentIndex - 1) : 0;
+
+  // Find which speed change segment the active reference belongs to
   const currentSpeedChangeIndex = speedChanges.findIndex((change, i) => {
     const nextChange = speedChanges[i + 1];
-    return currentIndex >= change.startIndex &&
-           (nextChange === undefined || currentIndex < nextChange.startIndex);
+    return activeIndex >= change.startIndex &&
+           (nextChange === undefined || activeIndex < nextChange.startIndex);
   });
 
   // Get speed at a specific speed change index
@@ -207,13 +212,6 @@ export function RallyDashboard({ raceId, pcId }: RallyDashboardProps) {
         } else {
           navigate({ to: "/carrera/$raceId", params: { raceId: String(raceId) } });
         }
-      } else if (e.key === "ArrowDown" || e.key === "ArrowRight") {
-        setCurrentIndex((prev) => {
-          const maxIndex = (references?.length ?? 1) - 1;
-          return prev < maxIndex ? prev + 1 : prev;
-        });
-      } else if (e.key === "ArrowUp" || e.key === "ArrowLeft") {
-        setCurrentIndex((prev) => (prev > 0 ? prev - 1 : prev));
       } else if (e.key === "a" || e.key === "A") {
         const increment = odometerDistance === "100m" ? 100 : odometerDistance === "50m" ? 50 : 25;
         adjustOdometer(increment);
@@ -281,7 +279,9 @@ export function RallyDashboard({ raceId, pcId }: RallyDashboardProps) {
         setClockCorrectionCs((prev) => prev + 1);
       } else if (e.key === " ") {
         e.preventDefault(); // Prevent page scroll
-        recordReference();
+        if (timerState.is_running) {
+          recordReference();
+        }
       } else if (e.key === "b" || e.key === "B") {
         // Delete last taken reference (but not the LAR)
         if (recordedSnapshots.length > 1) {
@@ -373,11 +373,8 @@ export function RallyDashboard({ raceId, pcId }: RallyDashboardProps) {
 
     setRecordedSnapshots((prev) => [...prev, snapshot]);
 
-    // Auto-advance to next reference
-    setCurrentIndex((prev) => {
-      const maxIndex = (references?.length ?? 1) - 1;
-      return prev < maxIndex ? prev + 1 : prev;
-    });
+    // Auto-advance to next reference (or past the end if last)
+    setCurrentIndex((prev) => prev + 1);
   };
 
   // Get the reference data for display

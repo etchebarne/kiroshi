@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useRace } from "../hooks/useRaces";
-import { usePC, useGetNextPC, useCreateNextPC } from "../hooks/usePCs";
+import { usePC, usePCsByRace, useGetNextPC, useCreateNextPC } from "../hooks/usePCs";
 import {
   useReferencesByPC,
   useCreateReference,
@@ -9,6 +9,7 @@ import {
   useDeleteReference,
   useToggleControlZone,
 } from "../hooks/useReferences";
+import { getReferencesByPc } from "../api/tauri";
 import { ContextMenu } from "./ContextMenu";
 import { ConfirmDialog } from "./ConfirmDialog";
 import type { EventType, ReferenceEntry } from "../types";
@@ -53,6 +54,54 @@ export function PCEditor({ raceId, pcId }: PCEditorProps) {
   const [speedInput, setSpeedInput] = useState("50");
   const [extraValue, setExtraValue] = useState("");
   const timeInputRef = useRef<HTMLInputElement>(null);
+
+  // Adjacent PC boundary times (for cross-PC validation)
+  const [prevPcLastTimeCs, setPrevPcLastTimeCs] = useState<number | null>(null);
+  const [nextPcFirstTimeCs, setNextPcFirstTimeCs] = useState<number | null>(null);
+  const { data: allPcs } = usePCsByRace(raceId);
+
+  // Fetch boundary times from adjacent PCs
+  useEffect(() => {
+    if (!allPcs) return;
+    const currentPc = allPcs.find((p) => p.id === pcId);
+    if (!currentPc) return;
+
+    // Find previous PC (highest pc_number less than current)
+    const prevPc = allPcs
+      .filter((p) => p.pc_number < currentPc.pc_number)
+      .sort((a, b) => b.pc_number - a.pc_number)[0];
+
+    // Find next PC (lowest pc_number greater than current)
+    const nextPc = allPcs
+      .filter((p) => p.pc_number > currentPc.pc_number)
+      .sort((a, b) => a.pc_number - b.pc_number)[0];
+
+    if (prevPc) {
+      getReferencesByPc(prevPc.id).then((refs) => {
+        if (refs.length > 0) {
+          const lastRef = refs[refs.length - 1];
+          setPrevPcLastTimeCs(
+            lastRef.hours * 360000 + lastRef.minutes * 6000 + lastRef.seconds * 100 + lastRef.centiseconds
+          );
+        }
+      });
+    } else {
+      setPrevPcLastTimeCs(null);
+    }
+
+    if (nextPc) {
+      getReferencesByPc(nextPc.id).then((refs) => {
+        if (refs.length > 0) {
+          const firstRef = refs[0];
+          setNextPcFirstTimeCs(
+            firstRef.hours * 360000 + firstRef.minutes * 6000 + firstRef.seconds * 100 + firstRef.centiseconds
+          );
+        }
+      });
+    } else {
+      setNextPcFirstTimeCs(null);
+    }
+  }, [allPcs, pcId]);
 
   // UI state
   const [highlightedRow, setHighlightedRow] = useState<number | null>(null);
@@ -170,16 +219,46 @@ export function PCEditor({ raceId, pcId }: PCEditorProps) {
   const isTimeValid = () => {
     if (timeInput.length !== 8) return false;
     if (!areTimeComponentsValid()) return false;
-    if (editingRef) return true; // Skip order validation when editing
-    if (!references || references.length === 0) return true;
 
     const { hours, minutes, seconds, centiseconds } = parseTimeInput(timeInput);
     const newTimeCs = timeToCs(hours, minutes, seconds, centiseconds);
 
-    const lastRef = references[references.length - 1];
-    const lastTimeCs = timeToCs(lastRef.hours, lastRef.minutes, lastRef.seconds, lastRef.centiseconds);
+    if (editingRef) {
+      // When editing, time must stay in order relative to neighbors in the same PC
+      if (references) {
+        const editIndex = references.findIndex((r) => r.id === editingRef.id);
+        if (editIndex > 0) {
+          const prevRef = references[editIndex - 1];
+          const prevTimeCs = timeToCs(prevRef.hours, prevRef.minutes, prevRef.seconds, prevRef.centiseconds);
+          if (newTimeCs <= prevTimeCs) return false;
+        }
+        if (editIndex < references.length - 1) {
+          const nextRef = references[editIndex + 1];
+          const nextTimeCs = timeToCs(nextRef.hours, nextRef.minutes, nextRef.seconds, nextRef.centiseconds);
+          if (newTimeCs >= nextTimeCs) return false;
+        }
+      }
+      // When editing, time can't be >= first reference of next PC
+      if (nextPcFirstTimeCs !== null && newTimeCs >= nextPcFirstTimeCs) return false;
+      return true;
+    }
 
-    return newTimeCs > lastTimeCs;
+    // For new references: must be > last reference in current PC
+    if (references && references.length > 0) {
+      const lastRef = references[references.length - 1];
+      const lastTimeCs = timeToCs(lastRef.hours, lastRef.minutes, lastRef.seconds, lastRef.centiseconds);
+      if (newTimeCs <= lastTimeCs) return false;
+    }
+
+    // For first reference of a PC: must be >= last reference of previous PC
+    if (references && references.length === 0 && prevPcLastTimeCs !== null) {
+      if (newTimeCs < prevPcLastTimeCs) return false;
+    }
+
+    // New references also can't be >= first reference of next PC
+    if (nextPcFirstTimeCs !== null && newTimeCs >= nextPcFirstTimeCs) return false;
+
+    return true;
   };
 
   // Check if form is valid for saving
