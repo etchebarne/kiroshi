@@ -540,10 +540,21 @@ export function RallyDashboard({ raceId, pcId, chain }: RallyDashboardProps) {
           const displayValue = Math.abs(diff_snapshot).toFixed(1).replace(".", ",");
           return (
             <div className="absolute left-[436px] top-0 w-[568px] h-[344px] bg-[#ef3c3c] text-center text-white overflow-hidden">
-              <p className="absolute left-1/2 -translate-x-1/2 top-[32px] text-[48px] font-semibold">
+              {/* Moving Indicator (Needle) */}
+              {Math.abs(diff_snapshot) <= 25 && (
+                <div
+                  className="absolute bottom-0 left-[calc(50%-10px)] w-[20px] h-[320px] bg-[#b91c1c] origin-bottom transition-transform duration-100 ease-linear"
+                  style={{ 
+                    transform: `rotate(${(diff_snapshot / 25) * 75}deg)`,
+                    clipPath: "polygon(50% 0%, 100% 100%, 0% 100%)"
+                  }}
+                />
+              )}
+
+              <p className="absolute left-1/2 -translate-x-1/2 top-[32px] text-[48px] font-semibold z-10 pointer-events-none">
                 {status}
               </p>
-              <p className="absolute left-1/2 -translate-x-1/2 top-[90px] text-[175px] font-extrabold">
+              <p className="absolute left-1/2 -translate-x-1/2 top-[90px] text-[175px] font-extrabold z-10 pointer-events-none">
                 {displayValue}
               </p>
             </div>
