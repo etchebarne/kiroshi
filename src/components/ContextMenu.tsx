@@ -19,7 +19,6 @@ export function ContextMenu({
   y,
   items,
   onClose,
-  scale = 1,
 }: ContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -52,29 +51,33 @@ export function ContextMenu({
   return (
     <div
       ref={menuRef}
-      className="absolute bg-white shadow-lg border border-gray-300 rounded-md overflow-hidden z-50"
+      className="absolute z-50 bg-white border-4 border-black shadow-[12px_12px_0px_rgba(0,0,0,1)] -skew-x-[10deg]"
       style={{
         left: adjustedX,
         top: adjustedY,
-        minWidth: 160,
+        minWidth: 240,
       }}
     >
-      {items.map((item, index) => (
-        <button
-          key={index}
-          className={`w-full px-4 py-3 text-left text-[18px] font-medium transition-colors ${
-            item.danger
-              ? "text-red-600 hover:bg-red-50"
-              : "text-black hover:bg-gray-100"
-          }`}
-          onClick={() => {
-            item.onClick();
-            onClose();
-          }}
-        >
-          {item.label}
-        </button>
-      ))}
+      <div className="p-6 flex flex-col gap-4 skew-x-[10deg]">
+        {items.map((item, index) => (
+          <button
+            key={index}
+            className={`w-full px-6 py-3 text-center border-4 border-black shadow-[6px_6px_0px_rgba(0,0,0,1)] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[4px_4px_0px_rgba(0,0,0,1)] active:translate-x-[6px] active:translate-y-[6px] active:shadow-none transition-all -skew-x-[10deg] ${
+              item.danger
+                ? "bg-[#ef3c3c] text-white hover:bg-[#cc2e2e]"
+                : "bg-[#f0f4ff] text-black hover:bg-white"
+            }`}
+            onClick={() => {
+              item.onClick();
+              onClose();
+            }}
+          >
+            <span className="block skew-x-[10deg] text-[20px] font-black italic uppercase tracking-tighter">
+              {item.label}
+            </span>
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

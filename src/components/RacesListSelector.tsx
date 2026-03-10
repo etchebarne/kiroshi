@@ -38,48 +38,52 @@ export function RacesListSelector() {
       >
         {/* Header */}
         <div className="absolute left-[40px] top-[40px] right-[40px]">
-          <div className="bg-[#ef3c3c] h-[100px] flex items-center justify-between px-[40px]">
-            <div className="flex items-center gap-4">
+          <div className="bg-[#ef3c3c] h-[100px] flex items-center justify-between px-[60px] border-4 border-black shadow-[10px_10px_0px_rgba(0,0,0,1)] -skew-x-[10deg]">
+            <div className="flex items-center gap-4 skew-x-[10deg]">
               <button
                 onClick={() => navigate({ to: "/" })}
-                className="text-white text-[32px] hover:opacity-80 transition-opacity"
+                className="text-black bg-white border-4 border-black w-12 h-12 flex items-center justify-center text-[28px] font-black italic hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_rgba(0,0,0,1)] shadow-[4px_4px_0px_rgba(0,0,0,1)] active:translate-x-[4px] active:translate-y-[4px] active:shadow-none transition-all -skew-x-[10deg] mr-2"
               >
-                &larr;
+                <span className="skew-x-[10deg] leading-none mb-1">&larr;</span>
               </button>
-              <h1 className="text-white text-[48px] font-bold">Seleccionar Carrera</h1>
+              <h1 className="text-white text-[48px] font-black italic uppercase tracking-tighter">Seleccionar Carrera</h1>
             </div>
           </div>
         </div>
 
         {/* Races List */}
-        <div className="absolute left-[40px] top-[160px] right-[40px] bottom-[40px] overflow-y-auto">
+        <div className="absolute left-[40px] top-[180px] right-[40px] bottom-[40px] overflow-y-auto custom-scrollbar">
           {isLoading ? (
             <div className="flex items-center justify-center h-full">
-              <span className="text-[32px] text-gray-500">Cargando...</span>
+              <span className="text-[32px] font-black italic uppercase text-gray-400">Cargando...</span>
             </div>
           ) : races && races.length > 0 ? (
-            <div className="grid grid-cols-2 gap-[20px]">
+            <div className="grid grid-cols-2 gap-[30px] px-[20px] pt-[10px] pb-8">
               {races.map((race) => (
                 <div
                   key={race.id}
                   onClick={() => navigate({ to: "/carrera/$raceId", params: { raceId: String(race.id) } })}
-                  className="bg-white hover:bg-gray-50 border-4 border-[#ef3c3c] p-[30px] cursor-pointer transition-colors"
+                  className="group relative bg-white border-4 border-black p-[30px] cursor-pointer transition-all -skew-x-[10deg] shadow-[8px_8px_0px_rgba(0,0,0,1)] hover:translate-x-[4px] hover:translate-y-[4px] hover:shadow-[4px_4px_0px_rgba(0,0,0,1)] active:translate-x-[8px] active:translate-y-[8px] active:shadow-none overflow-hidden"
                 >
-                  <h2 className="text-[32px] font-bold text-black mb-2">
-                    {race.name}
-                  </h2>
-                  <p className="text-[18px] text-gray-500">
-                    Creada: {new Date(race.created_at).toLocaleDateString()}
-                  </p>
+                  <div className="skew-x-[10deg]">
+                    <h2 className="text-[32px] font-black italic uppercase tracking-tighter text-black mb-2 group-hover:text-[#ef3c3c] transition-colors">
+                      {race.name}
+                    </h2>
+                    <p className="text-[18px] font-bold text-gray-500 uppercase">
+                      Creada: {new Date(race.created_at).toLocaleDateString()}
+                    </p>
+                  </div>
+                  {/* Decorative stripe */}
+                  <div className="absolute top-0 right-0 w-[20px] h-full bg-[#ef3c3c] translate-x-[20px] group-hover:translate-x-0 transition-transform" />
                 </div>
               ))}
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center h-full gap-8">
-              <span className="text-[32px] text-gray-500">
+              <span className="text-[32px] font-black italic uppercase text-gray-400">
                 No hay carreras disponibles
               </span>
-              <p className="text-[20px] text-gray-400">
+              <p className="text-[20px] font-bold text-gray-400 uppercase italic">
                 Crea carreras en el modo Carga para poder seleccionarlas aqui
               </p>
             </div>
