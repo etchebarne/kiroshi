@@ -308,14 +308,14 @@ export function RallyDashboard({ raceId, pcId, chain }: RallyDashboardProps) {
         } else {
           navigate({ to: "/carrera/$raceId", params: { raceId: String(raceId) } });
         }
-      } else if (waitingForAutoStart) {
-        // While waiting for auto-start, ignore all keys except Escape and S+P
-        return;
       } else if (e.key === "a" || e.key === "A") {
         const increment = odometerDistance === "100m" ? 100 : odometerDistance === "50m" ? 50 : 25;
         adjustOdometer(increment);
         // Capture raw_meters at the moment of odometer tick for accurate factor calculation
         setRawMetersAtOdometerTick(timerStateRef.current.raw_meters);
+      } else if (waitingForAutoStart) {
+        // While waiting for auto-start, ignore all keys except Escape, S+P, and A
+        return;
       } else if (e.key === "c" || e.key === "C") {
         resetOdometer();
       } else if (e.key === "Enter") {
